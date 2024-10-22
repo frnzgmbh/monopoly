@@ -1,30 +1,36 @@
 import configparser
+import os
 import time
-from datetime import datetime
+import json
 import requests
 from telethon import TelegramClient, events
+from os import walk
+from typing import List
 
 
-# https://api.telegram.org/bot8075899006:AAGSiOBswyDjph6hmYCdvOepawb3HUD17DA/getUpdates
-# "id":-1002450320001,"title":"Bank"
-# "id":-1002312877293,"title":"Nafas
-# "id":-1002360529448,"title":"Fatima
-# "id":-1002456271503,"title":"Babak
-# "id":-1002415833982,"title":"Shima
-# "id":-1002162467176,"title":"Sina
-# "id":-1002309641189,"title":"Omid
-# "id":-1002419927054,"title":"Farnoush
-# "id":-1002429242950,"title":"Tara
-# "id":-1002290733189,"title":"Farnaz
-# "id":-1002451394374,"title":"Majid
+# https://api.telegram.org/bot8075899006:AAGSiOBswyDjph6hmYCdvOepawb3HUD17DA/getUpdates?offset=-1
+# data = [
+# '-1002450320001,Bank,___,0',
+# '-1002312877293,Nafas,NAF,0',
+# '-1002360529448,Fatima,FAT,0',
+# '-1002456271503,Babak,BAB,0',
+# '-1002415833982,Shima,SHI,0',
+# '-1002162467176,Sina,SIN,0',
+# '-1002309641189,Omid,OMI,0',
+# '-1002419927054,Farnoush,FAN,0',
+# '-1002429242950,Tara,TAR,0',
+# '-1002290733189,Farnaz,FAR,0',
+# '-1002451394374,Majid,MAJ,0',
+# '-1002447487658,Ali",ALI,0',
+# '-1002463222025,Maryam",MAR,0']
+
 
 class Player:
-    credit = 0
-
-    def __init__(self, id, name, nickname):
-        self.id = id
-        self.name = name
-        self.nickname = nickname
+    def __init__(self, line: str):
+        self.id = str(line.split(',')[0])
+        self.name = str(line.split(',')[1])
+        self.nickname = str(line.split(',')[2])
+        self.credit = str(line.split(',')[3])
 
     def send_message(self, message) -> None:
         url = 'https://api.telegram.org/bot8075899006:AAGSiOBswyDjph6hmYCdvOepawb3HUD17DA/sendMessage?chat_id=' + \
@@ -32,56 +38,104 @@ class Player:
         requests.get(url)
 
 
+def get_player_list() -> List[Player]:
+    player_file_list = []
+    for (_, _, file_names) in walk(os.getcwd()):
+        for file_name in file_names:
+            if '.' not in file_name:
+                player_file_list.append(file_name)
+    result = []
+    for player_file_name in player_file_list:
+        f = open(player_file_name, 'r+')
+        line = f.readline()
+        result.append(Player(line))
+        f.close()
+    return result
+
+
+def get_player(nickname) -> Player:
+    result = None
+    for player in get_player_list():
+        if player.nickname == nickname:
+            result = player
+            break
+    return result
+
+
+def replace_player(old_nickname, new_nickname, new_name):
+    result_player = get_player(old_nickname)
+    if result_player is not None:
+        result_player.nickname = new_nickname
+        result_player.name = new_name
+        open(result_player.id, 'w').close()
+        f = open(result_player.id, 'r+')
+        f.write(str(result_player.id) + ',' +
+                str(result_player.name) + ',' +
+                str(result_player.nickname) + ',' +
+                str(result_player.credit))
+        f.close()
+
+
+def update_credit(nickname: str, new_credit: str):
+    result_player = get_player(nickname)
+    if result_player is not None:
+        result_player.credit = str(new_credit)
+        open(result_player.id, 'w').close()
+        f = open(result_player.id, 'r+')
+        f.write(str(result_player.id) + ',' +
+                str(result_player.name) + ',' +
+                str(result_player.nickname) + ',' +
+                str(result_player.credit))
+        f.close()
+
+
 def evaluate_message(message):
     try:
-        if (message[0:3].upper() in players) and (message[3:6].upper() in players):
-            if players[message[0:3].upper()].credit - int(message[6:]) >= 0:
-                players[message[0:3].upper()].credit -= int(message[6:])
-                players[message[3:6].upper()].credit += int(message[6:])
-                players[message[0:3].upper()].send_message('You paid ' + message[6:] + ' to ' +
-                                                           players[message[3:6].upper()].name + '.' + '\n' +
-                                                           'You have ' + str(players[message[0:3].upper()].credit) +
-                                                           ' credit.')
-                players[message[3:6].upper()].send_message('You got ' + message[6:] + ' from ' +
-                                                           players[message[0:3].upper()].name + '.' + '\n' +
-                                                           'You have ' + str(players[message[3:6].upper()].credit) +
-                                                           ' credit.')
+        if (message[0:3].upper() == "RE-") and (get_player(message[3:6].upper()) is not None):
+            replace_player(message[3:6].upper(), message[6:9].upper(), message[9:])
+        elif (get_player(message[0:3].upper()) is not None) and \
+                (get_player(message[3:6].upper()) is not None):
+            debitor = get_player(message[0:3].upper())
+            creditor = get_player(message[3:6].upper())
+            if int(debitor.credit) - int(message[6:]) >= 0:
+                debitor.credit = str(int(debitor.credit) - int(message[6:]))
+                creditor.credit = str(int(creditor.credit) + int(message[6:]))
+                update_credit(debitor.nickname, debitor.credit)
+                update_credit(creditor.nickname, creditor.credit)
+                debitor.send_message('You paid ' + message[6:] + ' to ' + creditor.name + '.\n' +
+                                     'You have ' + debitor.credit + ' credit.')
+                creditor.send_message('You got ' + message[6:] + ' from ' + debitor.name + '.\n' +
+                                      'You have ' + creditor.credit + ' credit.')
             else:
-                Bank.send_message(players[message[0:3].upper()].name + ' has not enough credit.')
-        elif message[0:5].upper() == 'RESET':
-            for player in players.values():
-                player.credit = int(message[5:])
-                player.send_message('You have ' + str(player.credit) + ' credit.')
+                bank.send_message(debitor.name + ' has not enough credit.')
         elif message.upper() == "LIST":
             result = ''
-            for player in players.values():
+            for player in get_player_list():
                 result += player.nickname + ' ' + player.name + ' ' + str(player.credit) + '\n'
-            Bank.send_message(result)
-        elif ('=' in message) and (message[0:3].upper() in players):
-            players[message[0:3].upper()].credit = int(message[4:])
-            players[message[0:3].upper()].send_message('You have ' + str(message[4:]) + ' credit.')
-        elif ('-' in message) and (message[0:3].upper() in players):
-            if players[message[0:3].upper()].credit - int(message[4:]) >= 0:
-                players[message[0:3].upper()].credit -= int(message[4:])
-                players[message[0:3].upper()].send_message('You paid ' + str(message[4:]) + ' to the bank.' + '\n' +
-                                                           'You have ' + str(players[message[0:3].upper()].credit) +
-                                                           ' credit.')
+            bank.send_message(result)
+        elif (message[0:5].upper() == 'RESET'):
+            for player in get_player_list():
+                update_credit(player.nickname, message[5:])
+                player.send_message('You have ' + message[5:] + ' credit.')
+        elif ('=' in message) and (get_player(message[0:3].upper()) is not None):
+            player = get_player(message[0:3].upper())
+            update_credit(player.nickname, str(int(message[4:])))
+            player.send_message('You have ' + str(message[4:]) + ' credit.')
+        elif ('-' in message) and (get_player(message[0:3].upper()) is not None):
+            player = get_player(message[0:3].upper())
+            if int(player.credit) - int(message[4:]) >= 0:
+                update_credit(player.nickname, str(int(player.credit) - int(message[4:])))
+                player.send_message('You paid ' + str(message[4:]) + ' to the bank.' + '\n' +
+                                    'You have ' + str(int(player.credit) - int(message[4:])) + ' credit.')
             else:
-                Bank.send_message(players[message[0:3].upper()].name + ' has not enough credit.')
-        elif ('+' in message) and (message[0:3].upper() in players):
-            players[message[0:3].upper()].credit += int(message[4:])
-            players[message[0:3].upper()].send_message('You got ' + str(message[4:]) + ' from the bank.' + '\n' +
-                                                       'You have ' + str(players[message[0:3].upper()].credit) +
-                                                       ' credit.')
-        elif (message[0:3].upper() == "RE-") and (message[3:6].upper() in players):
-            players[message[6:9].upper()] = players.pop(message[3:6].upper())
-            players[message[6:9].upper()].nickname = message[6:9].upper()
-            players[message[6:9].upper()].name = message[9:]
-
-    except Exception as e:
-        print(e)
-    # for player in players.values():
-    #    print(player.nickname + ' ' + player.name + ' ' + str(player.credit))
+                bank.send_message(player.name + ' has not enough credit.')
+        elif ('+' in message) and (get_player(message[0:3].upper()) is not None):
+            player = get_player(message[0:3].upper())
+            update_credit(player.nickname, str(int(player.credit) + int(message[4:])))
+            player.send_message('You got ' + str(message[4:]) + ' from the bank.' + '\n' +
+                                'You have ' + str(int(player.credit) + int(message[4:])) + ' credit.')
+    except:
+        pass
 
 
 config = configparser.ConfigParser()
@@ -98,35 +152,13 @@ client = TelegramClient(username, api_id, api_hash)
 async def my_event_handler(event):
     try:
         message = str(event.raw_text)
-        print(datetime.now())
         evaluate_message(message)
     except:
         pass
 
 
-Bank = Player('-1002450320001', 'Bank', '___')
-Majid = Player('-1002451394374', 'Majid', 'MAJ')
-Farnaz = Player('-1002290733189', 'Farnaz', 'FAR')
-Tara = Player('-1002429242950', 'Tara', 'TAR')
-Farnoush = Player('-1002419927054', 'Farnoush', 'FAN')
-Omid = Player('-1002309641189', 'Omid', 'OMI')
-Sina = Player('-1002162467176', 'Sina', 'SIN')
-Shima = Player('-1002415833982', 'Shima', 'SHI')
-Babak = Player('-1002456271503', 'Babak', 'BAB')
-Fatima = Player('-1002360529448', 'Fatima', 'FAT')
-Nafas = Player('-1002312877293', 'Nafas', 'NAF')
-players = {
-    Majid.nickname: Majid,
-    Farnaz.nickname: Farnaz,
-    Tara.nickname: Tara,
-    Farnoush.nickname: Farnoush,
-    Omid.nickname: Omid,
-    Sina.nickname: Sina,
-    Shima.nickname: Shima,
-    Babak.nickname: Babak,
-    Fatima.nickname: Fatima,
-    Nafas.nickname: Nafas
-}
+bank = Player('-1002450320001,Bank,___,0')
+
 while True:
     try:
         client.start()
