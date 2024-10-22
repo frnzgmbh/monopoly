@@ -42,7 +42,7 @@ def get_player_list() -> List[Player]:
     player_file_list = []
     for (_, _, file_names) in walk(os.getcwd()):
         for file_name in file_names:
-            if '.' not in file_name:
+            if '.' not in file_name and file_name[0] == '-':
                 player_file_list.append(file_name)
     result = []
     for player_file_name in player_file_list:
