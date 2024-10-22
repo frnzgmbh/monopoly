@@ -115,7 +115,7 @@ def evaluate_message(message):
             bank.send_message(result)
         elif (message[0:5].upper() == 'RESET'):
             for player in get_player_list():
-                update_credit(player.nickname, message[5:])
+                update_credit(player.nickname, str(int(message[5:])))
                 player.send_message('You have ' + message[5:] + ' credit.')
         elif ('=' in message) and (get_player(message[0:3].upper()) is not None):
             player = get_player(message[0:3].upper())
